@@ -6,7 +6,7 @@
 
 -- Create database
 --CREATE DATABASE IF NOT EXISTS herambha_portfolio;
-USE freedb_Herambha_Portfolio;
+USE railway;
 
 -- ── PROJECTS ──
 CREATE TABLE IF NOT EXISTS projects (
