@@ -11,23 +11,24 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'herambha_portfolio_secret_key_2025'
+app.secret_key = os.getenv('SECRET_KEY')
 CORS(app, supports_credentials=True, origins=["*"])
 
 # ══════════════════════════════════════════════
 #  DATABASE CONFIG  —  set your password below
 # ══════════════════════════════════════════════
 DB_CONFIG = {
-    'host': 'localhost',
-    'user': 'root',
-    'password': 'guptha',   # ← set your MySQL root password here
-    'database': 'herambha_portfolio',
-    'autocommit': True
+    'host': os.getenv('DB_HOST'),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD'),   # ← set your MySQL root password here
+    'database': os.getenv('DB_NAME'),
+    'autocommit': True,
+    'port':os.getenv('DB_PORT')
 }
 
 # ── Admin credentials (same as before) ──
-ADMIN_USERNAME = 'herambha'
-ADMIN_PASSWORD = 'herambha1107'
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME')
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
 
 
 # ══════════════════════════════════════════════
