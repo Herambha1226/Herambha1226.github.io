@@ -2,7 +2,6 @@
 <html lang="en" prefix="og: https://ogp.me/ns#">
 <head>
 <meta charset="UTF-8">
-<meta name="google-site-verification" content="XeAHDfpWGO1rnm73T4vTEybaoBjgLZ0pYyQ1jYscPEQ" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <!-- ══ PRIMARY SEO ══ -->
@@ -414,7 +413,7 @@ footer{background:#050505;border-top:1px solid var(--dark-border);padding:2.2rem
 
 <!-- ════ NAVBAR ════ -->
 <nav id="navbar">
-  <a href="#hero" class="nav-logo">H<span>K</span>G</a>
+  <a href="#hero" class="nav-logo">H<span>.</span>KG</a>
   <ul class="nav-links">
     <li><a href="#about">About</a></li>
     <li><a href="#skills">Skills</a></li>
@@ -579,7 +578,7 @@ footer{background:#050505;border-top:1px solid var(--dark-border);padding:2.2rem
     <div>
       <p>I'm actively looking for <strong style="color:var(--gold)">ML internship opportunities</strong>. Whether you have a project, a role, or just want to talk tech — my inbox is always open.</p>
       <div class="contact-links">
-        <a href="mailto:pallapothugayathri23@gmail.com" class="contact-link"><div class="contact-link-icon">📧</div><span>pallapothugayathri23@gmail.com</span></a>
+        <a href="/cdn-cgi/l/email-protection#9dedfcf1f1fcedf2e9f5e8fafce4fce9f5eff4afaeddfaf0fcf4f1b3fef2f0" class="contact-link"><div class="contact-link-icon">📧</div><span><span class="__cf_email__" data-cfemail="8fffeee3e3eeffe0fbe7fae8eef6eefbe7fde6bdbccfe8e2eee6e3a1ece0e2">[email&#160;protected]</span></span></a>
         <a href="https://github.com/Herambha1226/" target="_blank" rel="noopener" class="contact-link"><div class="contact-link-icon">🐙</div><span>github.com/Herambha1226</span></a>
         <a href="https://www.linkedin.com/in/herambha-karthikeya-guptha-pallpothu/" target="_blank" rel="noopener" class="contact-link"><div class="contact-link-icon">💼</div><span>LinkedIn — Herambha Karthikeya Guptha</span></a>
         <a class="contact-link"><div class="contact-link-icon">📍</div><span>Uppugunduru, Andhra Pradesh, India</span></a>
@@ -726,8 +725,16 @@ footer{background:#050505;border-top:1px solid var(--dark-border);padding:2.2rem
 </div>
 
 <script>
+/* ════════════════════════════════════════════════════════
+   BACKEND API URL
+   Change this to your Render URL when deployed:
+   e.g. const API = 'https://herambha-portfolio.onrender.com';
+   For local testing keep: const API = 'http://localhost:5000';
+════════════════════════════════════════════════════════ */
+const API = 'https://herambha1226githubio-production.up.railway.app/';
+
 /* ════════════════════════════════════
-   DEFAULT DATA
+   DEFAULT DATA (fallback if API down)
 ════════════════════════════════════ */
 const DEF_SKILLS=[
   {id:'c1',name:'Languages & ML Algorithms',skills:['Python','SVM','KNN','Logistic Regression']},
@@ -747,17 +754,20 @@ const DEF_CERTS=[];
    STATE
 ════════════════════════════════════ */
 let isAdmin=false;
-let projects  = JSON.parse(localStorage.getItem('hkg_projects')||'null')||DEF_PROJECTS;
-let skillCats = JSON.parse(localStorage.getItem('hkg_skills')  ||'null')||DEF_SKILLS;
-let certs     = JSON.parse(localStorage.getItem('hkg_certs')   ||'null')||DEF_CERTS;
-let messages  = JSON.parse(localStorage.getItem('hkg_messages')||'[]');
+let projects=[],skillCats=[],certs=[];
 let editProjId=null,editCatId=null,addSkillCatId=null,editCertId=null;
 
-function persist(){
-  localStorage.setItem('hkg_projects',JSON.stringify(projects));
-  localStorage.setItem('hkg_skills',  JSON.stringify(skillCats));
-  localStorage.setItem('hkg_certs',   JSON.stringify(certs));
-  localStorage.setItem('hkg_messages',JSON.stringify(messages));
+/* ════ API HELPER ════ */
+async function apiFetch(path, method='GET', body=null){
+  const opts={method,credentials:'include',headers:{'Content-Type':'application/json'}};
+  if(body) opts.body=JSON.stringify(body);
+  try{
+    const res=await fetch(API+path,opts);
+    return await res.json();
+  }catch(e){
+    console.error('API error:',e);
+    return null;
+  }
 }
 
 /* ════ MODAL HELPERS ════ */
@@ -772,10 +782,11 @@ function openLogin(){
   openM('loginModal');
   setTimeout(()=>document.getElementById('loginUser').focus(),200);
 }
-function doLogin(){
+async function doLogin(){
   const u=document.getElementById('loginUser').value.trim();
   const p=document.getElementById('loginPass').value.trim();
-  if(u==='herambha'&&p==='herambha1107'){
+  const res=await apiFetch('/api/login','POST',{username:u,password:p});
+  if(res&&res.success){
     isAdmin=true;
     closeM('loginModal');
     document.getElementById('admin-bar').classList.add('visible');
@@ -784,15 +795,16 @@ function doLogin(){
     document.getElementById('addCertBtn').style.display='block';
     document.getElementById('skillsAdminHeader').classList.add('visible');
     document.body.classList.add('admin-active');
-    updateNotifBadge();
+    await updateNotifBadge();
     renderAll();
-  } else {
+  }else{
     document.getElementById('loginError').style.display='block';
     document.getElementById('loginBox').classList.add('login-shake');
     setTimeout(()=>document.getElementById('loginBox').classList.remove('login-shake'),400);
   }
 }
-function adminLogout(){
+async function adminLogout(){
+  await apiFetch('/api/logout','POST');
   isAdmin=false;
   document.getElementById('admin-bar').classList.remove('visible');
   document.getElementById('navbar').classList.remove('admin-offset');
@@ -802,53 +814,70 @@ function adminLogout(){
   document.body.classList.remove('admin-active');
   renderAll();
 }
-function renderAll(){renderProjects();renderSkills();renderCerts();}
+async function renderAll(){
+  await Promise.all([loadProjects(),loadSkills(),loadCerts()]);
+}
 
 /* ════ NOTIFICATIONS ════ */
-function updateNotifBadge(){
+async function updateNotifBadge(){
+  if(!isAdmin)return;
+  const res=await apiFetch('/api/messages/count');
   const badge=document.getElementById('notifBadge');
-  const count=messages.length;
-  if(isAdmin&&count>0){badge.style.display='inline';badge.textContent=count+' Message'+(count!==1?'s':'');}
+  const count=res?res.count:0;
+  if(count>0){badge.style.display='inline';badge.textContent=count+' Message'+(count!==1?'s':'');}
   else badge.style.display='none';
 }
-function openNotifs(){
+async function openNotifs(){
   const list=document.getElementById('notifList');
+  list.innerHTML='<div class="notif-empty">Loading...</div>';
+  openM('notif-overlay');
+  const msgs=await apiFetch('/api/messages');
   list.innerHTML='';
-  if(!messages.length){list.innerHTML='<div class="notif-empty">No messages yet.</div>';openM('notif-overlay');return;}
-  messages.forEach((m,i)=>{
+  if(!msgs||!msgs.length){list.innerHTML='<div class="notif-empty">No messages yet.</div>';return;}
+  msgs.forEach(m=>{
     const d=document.createElement('div');d.className='notif-item';
-    d.innerHTML=`<div class="notif-meta"><span class="notif-name">${esc(m.name)}</span><span class="notif-time">${m.time}</span></div>
+    d.innerHTML=`<div class="notif-meta"><span class="notif-name">${esc(m.name)}</span><span class="notif-time">${m.created_at||''}</span></div>
       <div class="notif-email">${esc(m.email)}</div>
       ${m.subject?`<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:.3rem;font-style:italic;">Re: ${esc(m.subject)}</div>`:''}
       <div class="notif-msg">${esc(m.message)}</div>
-      <button class="notif-del" onclick="deleteNotif(${i})">🗑 Delete</button>`;
+      <button class="notif-del" onclick="deleteNotif(${m.id})">🗑 Delete</button>`;
     list.appendChild(d);
   });
-  openM('notif-overlay');
 }
 function closeNotifs(e){if(!e||e.target===document.getElementById('notif-overlay'))closeM('notif-overlay');}
-function deleteNotif(i){messages.splice(i,1);persist();updateNotifBadge();openNotifs();}
-function clearAllNotifs(){if(!confirm('Clear all messages?'))return;messages=[];persist();updateNotifBadge();closeM('notif-overlay');}
+async function deleteNotif(id){
+  await apiFetch('/api/messages/'+id,'DELETE');
+  await updateNotifBadge();
+  openNotifs();
+}
+async function clearAllNotifs(){
+  if(!confirm('Clear all messages?'))return;
+  await apiFetch('/api/messages/clear','DELETE');
+  await updateNotifBadge();
+  closeM('notif-overlay');
+}
 
 /* ════ CONTACT FORM ════ */
-function handleContact(e){
+async function handleContact(e){
   e.preventDefault();
-  const msg={
+  const data={
     name:document.getElementById('cf-name').value.trim(),
     email:document.getElementById('cf-email').value.trim(),
     subject:document.getElementById('cf-subject').value.trim(),
-    message:document.getElementById('cf-message').value.trim(),
-    time:new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})
+    message:document.getElementById('cf-message').value.trim()
   };
-  messages.unshift(msg);
-  persist();
-  updateNotifBadge();
+  await apiFetch('/api/messages','POST',data);
   document.getElementById('form-success').style.display='block';
   e.target.reset();
   setTimeout(()=>document.getElementById('form-success').style.display='none',5000);
 }
 
 /* ════ PROJECTS CRUD ════ */
+async function loadProjects(){
+  const data=await apiFetch('/api/projects');
+  projects=data||DEF_PROJECTS;
+  renderProjects();
+}
 function renderProjects(){
   const grid=document.getElementById('projectsGrid');
   grid.innerHTML='';
@@ -860,12 +889,13 @@ function renderProjects(){
   }
   projects.forEach(p=>{
     const card=document.createElement('div');card.className='project-card reveal';
-    const tH=(p.tech||[]).map(t=>`<span class="tech-tag">${esc(t)}</span>`).join('');
-    const iH=p.img?`<div class="project-img-wrap"><img src="${esc(p.img)}" alt="${esc(p.title)}" loading="lazy"></div>`:`<div class="project-img-wrap">${p.emoji||'🤖'}</div>`;
+    const tech=Array.isArray(p.tech)?p.tech:(p.tech?p.tech.split(','):[]);
+    const tH=tech.map(t=>`<span class="tech-tag">${esc(t.trim())}</span>`).join('');
+    const iH=(p.image_url||p.img)?`<div class="project-img-wrap"><img src="${esc(p.image_url||p.img)}" alt="${esc(p.title)}" loading="lazy"></div>`:`<div class="project-img-wrap">${p.emoji||'🤖'}</div>`;
     card.innerHTML=`<div class="card-admin-controls ${isAdmin?'show':''}">
       <button class="card-btn card-btn-edit" onclick="openEditProject(${p.id})">✏️</button>
       <button class="card-btn card-btn-del" onclick="deleteProject(${p.id})">🗑️</button>
-    </div>${iH}<div class="project-body"><div class="project-tech">${tH}</div><h3 class="project-title">${esc(p.title)}</h3><p class="project-desc">${esc(p.desc||'')}</p>${p.link?`<a href="${esc(p.link)}" target="_blank" rel="noopener" class="project-link">View Project →</a>`:''}</div>`;
+    </div>${iH}<div class="project-body"><div class="project-tech">${tH}</div><h3 class="project-title">${esc(p.title)}</h3><p class="project-desc">${esc(p.description||p.desc||'')}</p>${(p.project_link||p.link)?`<a href="${esc(p.project_link||p.link)}" target="_blank" rel="noopener" class="project-link">View Project →</a>`:''}</div>`;
     card.addEventListener('mousemove',ev=>{
       const r=card.getBoundingClientRect();
       const x=(ev.clientX-r.left)/r.width-.5,y=(ev.clientY-r.top)/r.height-.5;
@@ -885,19 +915,30 @@ function openAddProject(){
 function openEditProject(id){
   const p=projects.find(x=>x.id===id);if(!p)return;
   editProjId=id;document.getElementById('projectModalTitle').textContent='Edit Project';
-  setVals({pTitle:p.title,pDesc:p.desc||'',pTech:(p.tech||[]).join(', '),pImg:p.img||'',pLink:p.link||'',pEmoji:p.emoji||'🤖'});
+  const tech=Array.isArray(p.tech)?p.tech.join(', '):(p.tech||'');
+  setVals({pTitle:p.title,pDesc:p.description||p.desc||'',pTech:tech,pImg:p.image_url||p.img||'',pLink:p.project_link||p.link||'',pEmoji:p.emoji||'🤖'});
   openM('projectModal');
 }
-function saveProject(){
+async function saveProject(){
   const title=document.getElementById('pTitle').value.trim();if(!title){alert('Title required.');return;}
   const data={title,desc:document.getElementById('pDesc').value.trim(),tech:document.getElementById('pTech').value.split(',').map(s=>s.trim()).filter(Boolean),img:document.getElementById('pImg').value.trim(),link:document.getElementById('pLink').value.trim(),emoji:document.getElementById('pEmoji').value.trim()||'🤖'};
-  if(editProjId){const i=projects.findIndex(x=>x.id===editProjId);if(i>-1)projects[i]={...projects[i],...data};}
-  else{data.id=Date.now();projects.push(data);}
-  persist();closeM('projectModal');renderProjects();
+  if(editProjId) await apiFetch('/api/projects/'+editProjId,'PUT',data);
+  else await apiFetch('/api/projects','POST',data);
+  closeM('projectModal');
+  await loadProjects();
 }
-function deleteProject(id){if(!confirm('Delete this project?'))return;projects=projects.filter(x=>x.id!==id);persist();renderProjects();}
+async function deleteProject(id){
+  if(!confirm('Delete this project?'))return;
+  await apiFetch('/api/projects/'+id,'DELETE');
+  await loadProjects();
+}
 
 /* ════ CERTIFICATIONS CRUD ════ */
+async function loadCerts(){
+  const data=await apiFetch('/api/certs');
+  certs=data||DEF_CERTS;
+  renderCerts();
+}
 function renderCerts(){
   const grid=document.getElementById('certsGrid');
   grid.innerHTML='';
@@ -911,15 +952,15 @@ function renderCerts(){
   certs.forEach(cert=>{
     const card=document.createElement('div');card.className='cert-card reveal';
     card.innerHTML=`<div class="cert-admin-controls ${isAdmin?'show':''}">
-      <button class="card-btn card-btn-edit" onclick="openEditCert('${cert.id}')">✏️</button>
-      <button class="card-btn card-btn-del" onclick="deleteCert('${cert.id}')">🗑️</button>
+      <button class="card-btn card-btn-edit" onclick="openEditCert(${cert.id})">✏️</button>
+      <button class="card-btn card-btn-del" onclick="deleteCert(${cert.id})">🗑️</button>
     </div>
     <div class="cert-icon">${cert.emoji||typeIcon[cert.type]||'🎓'}</div>
     <div class="cert-type">${esc(cert.type||'Certification')}</div>
     <h3 class="cert-title">${esc(cert.title)}</h3>
     <div class="cert-issuer">${esc(cert.issuer||'')}</div>
-    <div class="cert-date">${esc(cert.date||'')}</div>
-    ${cert.link?`<a href="${esc(cert.link)}" target="_blank" rel="noopener" class="cert-link">🔗 View Credential</a>`:''}`;
+    <div class="cert-date">${esc(cert.date_completed||cert.date||'')}</div>
+    ${(cert.credential_link||cert.link)?`<a href="${esc(cert.credential_link||cert.link)}" target="_blank" rel="noopener" class="cert-link">🔗 View Credential</a>`:''}`;
     grid.appendChild(card);
   });
   observeReveal();
@@ -934,30 +975,40 @@ function openAddCert(){
 function openEditCert(id){
   const c=certs.find(x=>x.id===id);if(!c)return;
   editCertId=id;document.getElementById('certModalTitle').textContent='Edit Certificate';
-  setVals({cTitle:c.title,cIssuer:c.issuer||'',cDate:c.date||'',cLink:c.link||'',cEmoji:c.emoji||''});
+  setVals({cTitle:c.title,cIssuer:c.issuer||'',cDate:c.date_completed||c.date||'',cLink:c.credential_link||c.link||'',cEmoji:c.emoji||''});
   document.getElementById('cType').value=c.type||'Course';
   openM('certModal');
 }
-function saveCert(){
+async function saveCert(){
   const title=document.getElementById('cTitle').value.trim();if(!title){alert('Title required.');return;}
   const data={title,issuer:document.getElementById('cIssuer').value.trim(),type:document.getElementById('cType').value,date:document.getElementById('cDate').value.trim(),link:document.getElementById('cLink').value.trim(),emoji:document.getElementById('cEmoji').value.trim()};
-  if(editCertId){const i=certs.findIndex(x=>x.id===editCertId);if(i>-1)certs[i]={...certs[i],...data};}
-  else{data.id='cert_'+Date.now();certs.push(data);}
-  persist();closeM('certModal');renderCerts();
+  if(editCertId) await apiFetch('/api/certs/'+editCertId,'PUT',data);
+  else await apiFetch('/api/certs','POST',data);
+  closeM('certModal');
+  await loadCerts();
 }
-function deleteCert(id){if(!confirm('Delete this certificate?'))return;certs=certs.filter(x=>x.id!==id);persist();renderCerts();}
+async function deleteCert(id){
+  if(!confirm('Delete this certificate?'))return;
+  await apiFetch('/api/certs/'+id,'DELETE');
+  await loadCerts();
+}
 
 /* ════ SKILLS CRUD ════ */
+async function loadSkills(){
+  const data=await apiFetch('/api/skills');
+  skillCats=data||DEF_SKILLS;
+  renderSkills();
+}
 function renderSkills(){
   const container=document.getElementById('skillsContainer');container.innerHTML='';
   skillCats.forEach(cat=>{
     const div=document.createElement('div');div.className='skill-category reveal';
-    const tH=cat.skills.map(s=>`<span class="skill-tag">${esc(s)}<button class="skill-del-btn" title="Remove" onclick="deleteSkill('${esc(cat.id)}','${s.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">✕</button></span>`).join('');
+    const tH=cat.skills.map(s=>`<span class="skill-tag">${esc(s)}<button class="skill-del-btn" title="Remove" onclick="deleteSkill(${cat.id},'${s.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">✕</button></span>`).join('');
     div.innerHTML=`<div class="skill-cat-header"><h3>${esc(cat.name)}</h3><div class="cat-flex"></div>
       <div class="skill-cat-actions ${isAdmin?'visible':''}">
-        <button class="cat-btn cat-btn-add" onclick="openAddSkill('${esc(cat.id)}')">＋ Skill</button>
-        <button class="cat-btn cat-btn-edit" onclick="openRenameCat('${esc(cat.id)}')">✏️</button>
-        <button class="cat-btn cat-btn-del" onclick="deleteSkillCat('${esc(cat.id)}')">🗑️</button>
+        <button class="cat-btn cat-btn-add" onclick="openAddSkill(${cat.id},'${esc(cat.name)}')">＋ Skill</button>
+        <button class="cat-btn cat-btn-edit" onclick="openRenameCat(${cat.id},'${esc(cat.name)}')">✏️</button>
+        <button class="cat-btn cat-btn-del" onclick="deleteSkillCat(${cat.id},'${esc(cat.name)}')">🗑️</button>
       </div></div>
       <div class="skills-tags">${tH||'<span style="font-size:.8rem;color:var(--text-muted);font-style:italic;">Empty — click ＋ Skill to add.</span>'}</div>`;
     container.appendChild(div);
@@ -966,13 +1017,32 @@ function renderSkills(){
   observeReveal();
 }
 function openAddSkillCat(){document.getElementById('catName').value='';openM('skillCatModal');setTimeout(()=>document.getElementById('catName').focus(),200);}
-function saveSkillCat(){const n=document.getElementById('catName').value.trim();if(!n){alert('Name required.');return;}skillCats.push({id:'c_'+Date.now(),name:n,skills:[]});persist();closeM('skillCatModal');renderSkills();}
-function openRenameCat(id){editCatId=id;const c=skillCats.find(x=>x.id===id);document.getElementById('renameCatInput').value=c?c.name:'';openM('renameCatModal');setTimeout(()=>document.getElementById('renameCatInput').focus(),200);}
-function doRenameSkillCat(){const n=document.getElementById('renameCatInput').value.trim();if(!n){alert('Name required.');return;}const c=skillCats.find(x=>x.id===editCatId);if(c)c.name=n;persist();closeM('renameCatModal');renderSkills();}
-function deleteSkillCat(id){const c=skillCats.find(x=>x.id===id);if(!confirm(`Delete "${c?c.name:''}" and all its skills?`))return;skillCats=skillCats.filter(x=>x.id!==id);persist();renderSkills();}
-function openAddSkill(catId){addSkillCatId=catId;const c=skillCats.find(x=>x.id===catId);document.getElementById('skillModalTitle').textContent='Add Skill to "'+esc(c?c.name:'')+'"';document.getElementById('skillInput').value='';openM('skillModal');setTimeout(()=>document.getElementById('skillInput').focus(),200);}
-function saveSkill(){const raw=document.getElementById('skillInput').value.trim();if(!raw){alert('Enter at least one skill.');return;}const names=raw.split(',').map(s=>s.trim()).filter(Boolean);const cat=skillCats.find(x=>x.id===addSkillCatId);if(cat)names.forEach(n=>{if(!cat.skills.includes(n))cat.skills.push(n);});persist();closeM('skillModal');renderSkills();}
-function deleteSkill(catId,sn){const c=skillCats.find(x=>x.id===catId);if(!c)return;c.skills=c.skills.filter(s=>s!==sn);persist();renderSkills();}
+async function saveSkillCat(){
+  const n=document.getElementById('catName').value.trim();if(!n){alert('Name required.');return;}
+  await apiFetch('/api/skill-categories','POST',{name:n});
+  closeM('skillCatModal');await loadSkills();
+}
+function openRenameCat(id,name){editCatId=id;document.getElementById('renameCatInput').value=name||'';openM('renameCatModal');setTimeout(()=>document.getElementById('renameCatInput').focus(),200);}
+async function doRenameSkillCat(){
+  const n=document.getElementById('renameCatInput').value.trim();if(!n){alert('Name required.');return;}
+  await apiFetch('/api/skill-categories/'+editCatId,'PUT',{name:n});
+  closeM('renameCatModal');await loadSkills();
+}
+async function deleteSkillCat(id,name){
+  if(!confirm(`Delete "${name}" and all its skills?`))return;
+  await apiFetch('/api/skill-categories/'+id,'DELETE');
+  await loadSkills();
+}
+function openAddSkill(catId,catName){addSkillCatId=catId;document.getElementById('skillModalTitle').textContent='Add Skill to "'+esc(catName)+'"';document.getElementById('skillInput').value='';openM('skillModal');setTimeout(()=>document.getElementById('skillInput').focus(),200);}
+async function saveSkill(){
+  const raw=document.getElementById('skillInput').value.trim();if(!raw){alert('Enter at least one skill.');return;}
+  await apiFetch('/api/skills/add','POST',{category_id:addSkillCatId,names:raw});
+  closeM('skillModal');await loadSkills();
+}
+async function deleteSkill(catId,sn){
+  await apiFetch('/api/skills/delete','POST',{category_id:catId,name:sn});
+  await loadSkills();
+}
 
 /* ════ UTILITIES ════ */
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -1081,12 +1151,12 @@ document.addEventListener('keydown',e=>{
 });
 
 /* ════ BOOT ════ */
-window.addEventListener('load',()=>{
-  setTimeout(()=>{
+window.addEventListener('load', async () => {
+  setTimeout(async () => {
     document.getElementById('loader').classList.add('hide');
-    renderAll();
+    await renderAll();
     observeReveal();
-  },900);
+  }, 900);
 });
 </script>
 </body>
