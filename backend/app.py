@@ -12,7 +12,21 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY')
-CORS(app, supports_credentials=True, origins=["*"])
+
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+
+CORS(app, 
+     supports_credentials=True, 
+     origins=[
+         "https://herambha1226.github.io",
+         "http://localhost:5500",
+         "http://127.0.0.1:5500"
+     ],
+     allow_headers=["Content-Type"],
+     methods=["GET","POST","PUT","DELETE","OPTIONS"]
+)
 
 # ══════════════════════════════════════════════
 #  DATABASE CONFIG  —  set your password below
