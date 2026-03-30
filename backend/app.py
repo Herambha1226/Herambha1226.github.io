@@ -17,28 +17,28 @@ app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 
-CORS(app, 
-     supports_credentials=True, 
-     origins=[
-         "https://herambha1226.github.io",
-         "http://localhost:5500",
-         "http://127.0.0.1:5500"
-     ],
-     allow_headers=["Content-Type"],
-     methods=["GET","POST","PUT","DELETE","OPTIONS"]
+CORS(
+    app,
+    supports_credentials=True,
+    origins=[
+        "https://herambha1226.github.io"
+    ],
+    allow_headers=["Content-Type"],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 )
 
 # ══════════════════════════════════════════════
 #  DATABASE CONFIG  —  set your password below
 # ══════════════════════════════════════════════
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST'),
-    'user': os.getenv('DB_USER'),
-    'password': os.getenv('DB_PASSWORD'),   # ← set your MySQL root password here
-    'database': os.getenv('DB_NAME'),
-    'autocommit': True,
-    'port':os.getenv('DB_PORT')
+    'host': os.getenv('MYSQLHOST'),
+    'user': os.getenv('MYSQLUSER'),
+    'password': os.getenv('MYSQLPASSWORD'),
+    'database': os.getenv('MYSQLDATABASE'),
+    'port': int(os.getenv('MYSQLPORT')),
+    'autocommit': True
 }
+
 
 # ── Admin credentials (same as before) ──
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME')
