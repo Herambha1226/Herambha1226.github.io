@@ -1,49 +1,60 @@
-from flask import Flask, jsonify, request, session
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import mysql.connector
 from mysql.connector import Error
-import hashlib
-import os
-from datetime import datetime
 from functools import wraps
 from dotenv import load_dotenv
+import os
+import jwt
+import datetime
+import re
 
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY')
 
-app.config['SESSION_COOKIE_SECURE'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-
-CORS(
-    app,
-    supports_credentials=True,
-    origins=[
-        "https://herambha1226.github.io"
-    ],
-    allow_headers=["Content-Type"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+CORS(app,
+     supports_credentials=True,
+     origins=["https://herambha1226.github.io", "http://localhost:5500", "http://127.0.0.1:5500"],
+     allow_headers=["Content-Type", "Authorization"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 )
 
+SECRET_KEY     = os.getenv('SECRET_KEY', 'herambha_secret_2025')
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'herambha')
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'herambha1107')
+
 # ══════════════════════════════════════════════
-#  DATABASE CONFIG  —  set your password below
+#  DB CONFIG — auto detects Railway MySQL URL
 # ══════════════════════════════════════════════
-DB_CONFIG = {
-    'host': os.getenv('MYSQLHOST'),
-    'user': os.getenv('MYSQLUSER'),
-    'password': os.getenv('MYSQLPASSWORD'),
-    'database': os.getenv('MYSQLDATABASE'),
-    'port': int(os.getenv('MYSQLPORT') or 23456),
-    'autocommit': True
-}
+MYSQL_URL = os.getenv('MYSQLURL') or os.getenv('MYSQL_URL') or os.getenv('DATABASE_URL')
 
-
-# ── Admin credentials (same as before) ──
-ADMIN_USERNAME = os.getenv('ADMIN_USERNAME')
-ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
-
+if MYSQL_URL:
+    match = re.match(r'mysql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', MYSQL_URL)
+    if match:
+        DB_CONFIG = {
+            'user':               match.group(1),
+            'password':           match.group(2),
+            'host':               match.group(3),
+            'port':               int(match.group(4)),
+            'database':           match.group(5),
+            'autocommit':         True,
+            'connection_timeout': 30,
+            'ssl_disabled':       True
+        }
+        print(f"✅ Using MySQL URL: host={match.group(3)} port={match.group(4)}")
+else:
+    DB_CONFIG = {
+        'host':               os.getenv('MYSQLHOST', 'mysql-qviy.railway.internal'),
+        'user':               os.getenv('MYSQLUSER', 'root'),
+        'password':           os.getenv('MYSQLPASSWORD', ''),
+        'database':           os.getenv('MYSQLDATABASE', 'railway'),
+        'port':               int(os.getenv('MYSQLPORT') or 3306),
+        'autocommit':         True,
+        'connection_timeout': 30,
+        'ssl_disabled':       True
+    }
+    print(f"✅ Using MySQL config: host={DB_CONFIG['host']} port={DB_CONFIG['port']}")
 
 # ══════════════════════════════════════════════
 #  DB HELPER
@@ -60,6 +71,7 @@ def query(sql, params=(), fetchone=False, fetchall=False, commit=False):
     conn = get_db()
     if not conn:
         return None
+    cursor = None
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute(sql, params)
@@ -74,21 +86,88 @@ def query(sql, params=(), fetchone=False, fetchall=False, commit=False):
         print(f"Query error: {e}")
         return None
     finally:
-        cursor.close()
-        conn.close()
-
+        try:
+            if cursor: cursor.close()
+            if conn:   conn.close()
+        except:
+            pass
 
 # ══════════════════════════════════════════════
-#  AUTH DECORATOR
+#  AUTO CREATE TABLES ON STARTUP
 # ══════════════════════════════════════════════
+def init_db():
+    tables = [
+        """CREATE TABLE IF NOT EXISTS projects (
+            id           INT AUTO_INCREMENT PRIMARY KEY,
+            title        VARCHAR(255) NOT NULL,
+            description  TEXT,
+            tech         TEXT,
+            image_url    VARCHAR(500),
+            project_link VARCHAR(500),
+            emoji        VARCHAR(10) DEFAULT '🤖',
+            created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS skill_categories (
+            id         INT AUTO_INCREMENT PRIMARY KEY,
+            name       VARCHAR(255) NOT NULL,
+            sort_order INT DEFAULT 0
+        )""",
+        """CREATE TABLE IF NOT EXISTS skills (
+            id          INT AUTO_INCREMENT PRIMARY KEY,
+            name        VARCHAR(100) NOT NULL,
+            category_id INT,
+            FOREIGN KEY (category_id) REFERENCES skill_categories(id) ON DELETE CASCADE
+        )""",
+        """CREATE TABLE IF NOT EXISTS certifications (
+            id              INT AUTO_INCREMENT PRIMARY KEY,
+            title           VARCHAR(255) NOT NULL,
+            issuer          VARCHAR(255),
+            type            VARCHAR(50) DEFAULT 'Course',
+            date_completed  VARCHAR(50),
+            credential_link VARCHAR(500),
+            emoji           VARCHAR(10),
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS messages (
+            id         INT AUTO_INCREMENT PRIMARY KEY,
+            name       VARCHAR(255),
+            email      VARCHAR(255),
+            subject    VARCHAR(255),
+            message    TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"""
+    ]
+    for t in tables:
+        result = query(t, commit=True)
+        if result is None:
+            print("⚠️ Table creation may have failed — check DB connection")
+    print("✅ All tables ready!")
+
+# ══════════════════════════════════════════════
+#  JWT
+# ══════════════════════════════════════════════
+def generate_token():
+    payload = {
+        'admin': True,
+        'exp':   datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+
+def verify_token(token):
+    try:
+        jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        return True
+    except:
+        return False
+
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get('admin_logged_in'):
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not token or not verify_token(token):
             return jsonify({'error': 'Unauthorized'}), 401
         return f(*args, **kwargs)
     return decorated
-
 
 # ══════════════════════════════════════════════
 #  AUTH ROUTES
@@ -96,47 +175,34 @@ def admin_required(f):
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json or {}
-    username = data.get('username', '')
-    password = data.get('password', '')
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-        session['admin_logged_in'] = True
-        return jsonify({'success': True, 'message': 'Logged in successfully'})
+    if data.get('username') == ADMIN_USERNAME and data.get('password') == ADMIN_PASSWORD:
+        return jsonify({'success': True, 'token': generate_token()})
     return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
-    session.clear()
-    return jsonify({'success': True, 'message': 'Logged out'})
-
-@app.route('/api/auth-check', methods=['GET'])
-def auth_check():
-    return jsonify({'logged_in': bool(session.get('admin_logged_in'))})
-
+    return jsonify({'success': True})
 
 # ══════════════════════════════════════════════
-#  PROJECTS  —  full CRUD
+#  PROJECTS
 # ══════════════════════════════════════════════
 @app.route('/api/projects', methods=['GET'])
 def get_projects():
     rows = query('SELECT * FROM projects ORDER BY created_at DESC', fetchall=True)
-    if rows is None:
-        return jsonify([])
+    if rows is None: return jsonify([])
     for row in rows:
-        # convert tech string back to list
         row['tech'] = row['tech'].split(',') if row['tech'] else []
-        if row.get('created_at'):
-            row['created_at'] = str(row['created_at'])
+        if row.get('created_at'): row['created_at'] = str(row['created_at'])
     return jsonify(rows)
 
 @app.route('/api/projects', methods=['POST'])
 @admin_required
 def add_project():
     d = request.json or {}
-    tech_str = ','.join(d.get('tech', []))
     rowid = query(
-        'INSERT INTO projects (title, description, tech, image_url, project_link, emoji) VALUES (%s,%s,%s,%s,%s,%s)',
-        (d.get('title',''), d.get('desc',''), tech_str, d.get('img',''), d.get('link',''), d.get('emoji','🤖')),
-        commit=True
+        'INSERT INTO projects (title,description,tech,image_url,project_link,emoji) VALUES (%s,%s,%s,%s,%s,%s)',
+        (d.get('title',''), d.get('desc',''), ','.join(d.get('tech',[])),
+         d.get('img',''), d.get('link',''), d.get('emoji','🤖')), commit=True
     )
     return jsonify({'success': True, 'id': rowid})
 
@@ -144,11 +210,10 @@ def add_project():
 @admin_required
 def update_project(pid):
     d = request.json or {}
-    tech_str = ','.join(d.get('tech', []))
     query(
-        'UPDATE projects SET title=%s, description=%s, tech=%s, image_url=%s, project_link=%s, emoji=%s WHERE id=%s',
-        (d.get('title',''), d.get('desc',''), tech_str, d.get('img',''), d.get('link',''), d.get('emoji','🤖'), pid),
-        commit=True
+        'UPDATE projects SET title=%s,description=%s,tech=%s,image_url=%s,project_link=%s,emoji=%s WHERE id=%s',
+        (d.get('title',''), d.get('desc',''), ','.join(d.get('tech',[])),
+         d.get('img',''), d.get('link',''), d.get('emoji','🤖'), pid), commit=True
     )
     return jsonify({'success': True})
 
@@ -158,15 +223,13 @@ def delete_project(pid):
     query('DELETE FROM projects WHERE id=%s', (pid,), commit=True)
     return jsonify({'success': True})
 
-
 # ══════════════════════════════════════════════
-#  SKILL CATEGORIES  —  full CRUD
+#  SKILLS
 # ══════════════════════════════════════════════
 @app.route('/api/skills', methods=['GET'])
 def get_skills():
     cats = query('SELECT * FROM skill_categories ORDER BY sort_order ASC', fetchall=True)
-    if not cats:
-        return jsonify([])
+    if not cats: return jsonify([])
     for cat in cats:
         skills = query('SELECT * FROM skills WHERE category_id=%s ORDER BY id ASC', (cat['id'],), fetchall=True)
         cat['skills'] = [s['name'] for s in (skills or [])]
@@ -177,7 +240,7 @@ def get_skills():
 def add_skill_category():
     d = request.json or {}
     rowid = query(
-        'INSERT INTO skill_categories (name, sort_order) VALUES (%s, (SELECT IFNULL(MAX(sort_order),0)+1 FROM skill_categories sc2))',
+        'INSERT INTO skill_categories (name,sort_order) SELECT %s,IFNULL(MAX(sort_order),0)+1 FROM skill_categories',
         (d.get('name',''),), commit=True
     )
     return jsonify({'success': True, 'id': rowid})
@@ -196,17 +259,15 @@ def delete_skill_category(cid):
     query('DELETE FROM skill_categories WHERE id=%s', (cid,), commit=True)
     return jsonify({'success': True})
 
-# ── Individual skills ──
 @app.route('/api/skills/add', methods=['POST'])
 @admin_required
 def add_skill():
     d = request.json or {}
-    names = [n.strip() for n in d.get('names', '').split(',') if n.strip()]
-    cid = d.get('category_id')
+    names = [n.strip() for n in d.get('names','').split(',') if n.strip()]
+    cid   = d.get('category_id')
     for name in names:
-        exists = query('SELECT id FROM skills WHERE name=%s AND category_id=%s', (name, cid), fetchone=True)
-        if not exists:
-            query('INSERT INTO skills (name, category_id) VALUES (%s,%s)', (name, cid), commit=True)
+        if not query('SELECT id FROM skills WHERE name=%s AND category_id=%s', (name,cid), fetchone=True):
+            query('INSERT INTO skills (name,category_id) VALUES (%s,%s)', (name,cid), commit=True)
     return jsonify({'success': True})
 
 @app.route('/api/skills/delete', methods=['POST'])
@@ -216,18 +277,15 @@ def delete_skill():
     query('DELETE FROM skills WHERE name=%s AND category_id=%s', (d.get('name',''), d.get('category_id')), commit=True)
     return jsonify({'success': True})
 
-
 # ══════════════════════════════════════════════
-#  CERTIFICATIONS  —  full CRUD
+#  CERTIFICATIONS
 # ══════════════════════════════════════════════
 @app.route('/api/certs', methods=['GET'])
 def get_certs():
     rows = query('SELECT * FROM certifications ORDER BY created_at DESC', fetchall=True)
-    if rows is None:
-        return jsonify([])
+    if rows is None: return jsonify([])
     for r in rows:
-        if r.get('created_at'):
-            r['created_at'] = str(r['created_at'])
+        if r.get('created_at'): r['created_at'] = str(r['created_at'])
     return jsonify(rows)
 
 @app.route('/api/certs', methods=['POST'])
@@ -235,9 +293,9 @@ def get_certs():
 def add_cert():
     d = request.json or {}
     rowid = query(
-        'INSERT INTO certifications (title, issuer, type, date_completed, credential_link, emoji) VALUES (%s,%s,%s,%s,%s,%s)',
-        (d.get('title',''), d.get('issuer',''), d.get('type','Course'), d.get('date',''), d.get('link',''), d.get('emoji','')),
-        commit=True
+        'INSERT INTO certifications (title,issuer,type,date_completed,credential_link,emoji) VALUES (%s,%s,%s,%s,%s,%s)',
+        (d.get('title',''), d.get('issuer',''), d.get('type','Course'),
+         d.get('date',''), d.get('link',''), d.get('emoji','')), commit=True
     )
     return jsonify({'success': True, 'id': rowid})
 
@@ -246,9 +304,9 @@ def add_cert():
 def update_cert(cid):
     d = request.json or {}
     query(
-        'UPDATE certifications SET title=%s, issuer=%s, type=%s, date_completed=%s, credential_link=%s, emoji=%s WHERE id=%s',
-        (d.get('title',''), d.get('issuer',''), d.get('type','Course'), d.get('date',''), d.get('link',''), d.get('emoji',''), cid),
-        commit=True
+        'UPDATE certifications SET title=%s,issuer=%s,type=%s,date_completed=%s,credential_link=%s,emoji=%s WHERE id=%s',
+        (d.get('title',''), d.get('issuer',''), d.get('type','Course'),
+         d.get('date',''), d.get('link',''), d.get('emoji',''), cid), commit=True
     )
     return jsonify({'success': True})
 
@@ -258,29 +316,23 @@ def delete_cert(cid):
     query('DELETE FROM certifications WHERE id=%s', (cid,), commit=True)
     return jsonify({'success': True})
 
-
 # ══════════════════════════════════════════════
-#  CONTACT MESSAGES  —  save & read
+#  MESSAGES
 # ══════════════════════════════════════════════
 @app.route('/api/messages', methods=['GET'])
 @admin_required
 def get_messages():
     rows = query('SELECT * FROM messages ORDER BY created_at DESC', fetchall=True)
-    if rows is None:
-        return jsonify([])
+    if rows is None: return jsonify([])
     for r in rows:
-        if r.get('created_at'):
-            r['created_at'] = str(r['created_at'])
+        if r.get('created_at'): r['created_at'] = str(r['created_at'])
     return jsonify(rows)
 
 @app.route('/api/messages', methods=['POST'])
 def save_message():
     d = request.json or {}
-    query(
-        'INSERT INTO messages (name, email, subject, message) VALUES (%s,%s,%s,%s)',
-        (d.get('name',''), d.get('email',''), d.get('subject',''), d.get('message','')),
-        commit=True
-    )
+    query('INSERT INTO messages (name,email,subject,message) VALUES (%s,%s,%s,%s)',
+          (d.get('name',''), d.get('email',''), d.get('subject',''), d.get('message','')), commit=True)
     return jsonify({'success': True})
 
 @app.route('/api/messages/<int:mid>', methods=['DELETE'])
@@ -301,14 +353,23 @@ def message_count():
     row = query('SELECT COUNT(*) as count FROM messages', fetchone=True)
     return jsonify({'count': row['count'] if row else 0})
 
-
 # ══════════════════════════════════════════════
 #  HEALTH CHECK
 # ══════════════════════════════════════════════
 @app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok', 'message': 'Herambha Portfolio API running'})
+    db_ok = get_db() is not None
+    return jsonify({
+        'status':   'ok' if db_ok else 'db_error',
+        'database': 'connected ✅' if db_ok else 'not connected ❌',
+        'message':  'Herambha Portfolio API running'
+    })
 
+# ══════════════════════════════════════════════
+#  START
+# ══════════════════════════════════════════════
+with app.app_context():
+    init_db()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
