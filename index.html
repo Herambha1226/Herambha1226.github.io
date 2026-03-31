@@ -760,15 +760,24 @@ let isAdmin=false;
 let projects=[],skillCats=[],certs=[];
 let editProjId=null,editCatId=null,addSkillCatId=null,editCertId=null;
 
+
 /* ════ API HELPER ════ */
+let adminToken = null;
+
 async function apiFetch(path, method='GET', body=null){
-  const opts={method,credentials:'include',headers:{'Content-Type':'application/json'}};
-  if(body) opts.body=JSON.stringify(body);
+  const headers = {'Content-Type':'application/json'};
+  if(adminToken){
+    headers['Authorization'] = 'Bearer ' + adminToken;
+  }
+  const opts = {method, headers, mode:'cors'};
+  if(body) opts.body = JSON.stringify(body);
   try{
-    const res=await fetch(API+path,opts);
-    return await res.json();
+    const res = await fetch(API+path, opts);
+    const text = await res.text();
+    try{ return JSON.parse(text); }
+    catch{ console.error('Bad response:', text); return null; }
   }catch(e){
-    console.error('API error:',e);
+    console.error('Fetch error:',e);
     return null;
   }
 }
@@ -789,7 +798,8 @@ async function doLogin(){
   const u=document.getElementById('loginUser').value.trim();
   const p=document.getElementById('loginPass').value.trim();
   const res=await apiFetch('/api/login','POST',{username:u,password:p});
-  if(res&&res.success){
+  if(res && res.success && res.token){
+    adminToken = res.token;
     isAdmin=true;
     closeM('loginModal');
     document.getElementById('admin-bar').classList.add('visible');
@@ -802,12 +812,13 @@ async function doLogin(){
     renderAll();
   }else{
     document.getElementById('loginError').style.display='block';
+    document.getElementById('loginError').textContent='❌ '+(res&&res.message?res.message:'Login failed');
     document.getElementById('loginBox').classList.add('login-shake');
     setTimeout(()=>document.getElementById('loginBox').classList.remove('login-shake'),400);
   }
 }
 async function adminLogout(){
-  await apiFetch('/api/logout','POST');
+  adminToken = null;
   isAdmin=false;
   document.getElementById('admin-bar').classList.remove('visible');
   document.getElementById('navbar').classList.remove('admin-offset');
